@@ -1,0 +1,57 @@
+body {
+    background: url("../../img/body.jpg") no-repeat center center fixed;
+    background-size: cover;
+    font-family: Arial, sans-serif;
+}
+
+.container {
+    max-width: 500px;
+    margin: 50px auto;
+}
+
+.card {
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+}
+
+.header {
+    text-align: center;
+    padding: 15px;
+}
+
+.btn-custom {
+    background: green;
+    border: none;
+    color: white;
+    transition: background 0.3s ease-in-out;
+}
+
+.btn-custom:hover {
+    background: green;
+}
+
+.navbar {
+    padding: 10px 15px;
+    background-color: #343a40;
+}
+
+.navbar-brand img {
+    width: 50px;
+    height: 50px;
+}
+
+.navbar-nav .nav-link {
+    font-size: 14px;
+    padding: 5px 10px;
+}
+
+@media (max-width: 768px) {
+    .navbar-nav {
+        text-align: center;
+    }
+
+    .navbar-nav .nav-link {
+        padding: 10px;
+    }
+}

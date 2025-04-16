@@ -1,0 +1,26 @@
+body {
+    background: url("../../img/body.jpg") no-repeat center center fixed;
+    background-size: cover;
+    font-family: Arial, sans-serif;
+}
+.navbar-brand img {
+    width: 50px;
+    height: 50px;
+}
+.container3 {
+    background-color: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 75%;
+    margin: 5% auto;
+    text-align: center;
+}
+.table-responsive {
+    margin-top: 20px;
+}
+.btn-logout {
+    margin-top: 20px;
+}
+
+
