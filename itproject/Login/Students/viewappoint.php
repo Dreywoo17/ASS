@@ -2,7 +2,26 @@
 session_start();
 require 'C:\xampp\htdocs\itproject\DBconnect\Accounts\overall.php';
 
-// Handle appointment status update
+// Ensure that the user is logged in as a student
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] != 'Student') {
+    header("Location: /itproject/Login/login.php");
+    exit();
+}
+
+// Debug: Check session data
+// echo "<pre>";
+// print_r($_SESSION);  // Print data to check if student_id is being passed
+// echo "</pre>";
+
+
+// Debug: Check the student ID value
+// echo "Student ID: $studentID<br>";
+
+// Fetch the student ID from session
+$studentID = $_SESSION['student_id'];  // This should match the data type of student_ID in appointmentdb table
+
+
+// Handle appointment status update (Cancel or Ongoing)
 if (isset($_GET['action']) && isset($_GET['id'])) {
     $appointment_id = (int) $_GET['id']; 
     $action = $_GET['action'];
@@ -22,7 +41,7 @@ if (isset($_GET['action']) && isset($_GET['id'])) {
     }
 }
 
-// Fetch appointment details with department and teacher name (join with teacher table)
+// Fetch appointments for the logged-in student (based on student ID)
 $sql = "SELECT 
             a.ID,
             a.student_name,
@@ -34,13 +53,23 @@ $sql = "SELECT
             a.department_name,
             t.teacher_name
         FROM appointmentdb a
-        JOIN teacher t ON a.teacher_name = t.teacher_name"; 
+        JOIN teacher t ON a.teacher_name = t.teacher_name
+        WHERE a.student_ID = ?";  // Use the session student ID to fetch appointments
 
-$result = $conn->query($sql);
+$statement = $conn->prepare($sql);
 
-if (!$result) {
-    die("Database query failed: " . $conn->error);
-}
+// If student_ID is an integer, use "i" as the parameter type
+$statement->bind_param("i", $studentID); // Assuming student_ID is INT in database
+$statement->execute();
+$result = $statement->get_result();
+
+// Debug: Check query result
+// if ($result->num_rows > 0) {
+//     echo "Appointments found.<br>";
+// } else {
+//     echo "No appointments found.<br>";
+// }
+
 ?>
 
 <!DOCTYPE html>
@@ -76,6 +105,7 @@ if (!$result) {
         </div>
     </div>
 </nav>
+
 
 <div class="container d-flex justify-content-center mt-4">
     <div class="container3">

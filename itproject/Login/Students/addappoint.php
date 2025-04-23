@@ -1,253 +1,202 @@
 <?php
 session_start();
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-
 require 'C:\xampp\htdocs\itproject\DBconnect\Accounts\overall.php';
-$feedback = '';
-$targetDir = "uploads/";
 
-// Example departments
-$departments = [
-    'Computer Studies',
-    'Education',
-    'Business and Accountancy',
-    'Maritime Education',
-    'Criminology',
-    'Engineering',
-    'Health and Sciences',
-    'Art and Sciences'
-];
+$success_message = "";
+$error_message = "";
+$instructors = [];
+$appointments = [];
+$action = $_POST['action'] ?? '';
 
-if (!is_dir($targetDir)) {
-    mkdir($targetDir, 0755, true);
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] != 'Student') {
+    header("Location: /itproject/Login/login.php");
+    exit();
 }
 
+$studentID = $_SESSION['student_id'] ?? null;
+
+// Fetch instructors and handle submission
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $name = htmlspecialchars(trim($_POST['name']));
-    $email = htmlspecialchars(trim($_POST['email']));
-    $password = trim($_POST['password']);
-    $confirm_password = trim($_POST['confirm_password']);
-    $user_type = $_POST['user_type'] ?? '';
-    $department = $_POST['department'] ?? ''; 
-
-    $imagePath = '';
-    if (isset($_FILES['profile_image']) && $_FILES['profile_image']['error'] == 0) {
-        $imageName = basename($_FILES['profile_image']['name']);
-        $imageType = $_FILES['profile_image']['type'];
-        $tmpName = $_FILES['profile_image']['tmp_name'];
-        $imagePath = $targetDir . $imageName;
-
-        move_uploaded_file($tmpName, $imagePath);
-    }
-
-    if (empty($name) || empty($email) || empty($password) || empty($confirm_password) || empty($user_type)) {
-        $feedback = "<div class='alert alert-danger text-center'>All fields are required.</div>";
-    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        $feedback = "<div class='alert alert-danger text-center'>Invalid email format.</div>";
-    } elseif ($password !== $confirm_password) {
-        $feedback = "<div class='alert alert-danger text-center'>Passwords do not match.</div>";
-    } elseif (!preg_match('/@g\.cu\.edu\.ph$/', $email)) {
-        $feedback = "<div class='alert alert-danger text-center'>Please use your CU corporate email.</div>";
-    } else {
-        $check_sql = "
-            SELECT email FROM (
-                SELECT student_email AS email FROM students
-                UNION
-                SELECT teacher_email AS email FROM teacher
-                UNION
-                SELECT admin_email AS email FROM admin
-            ) AS all_users
-            WHERE email = ?";
-        $check_statement = $conn->prepare($check_sql);
-        $check_statement->bind_param("s", $email);
-        $check_statement->execute();
-        $check_statement->store_result();
-
-        if ($check_statement->num_rows > 0) {
-            $feedback = "<div class='alert alert-danger text-center'>Email is already registered.</div>";
-        } else {
-            $hashed_password = password_hash($password, PASSWORD_BCRYPT);
-
-            if ($user_type == "Student") {
-                $sql = "INSERT INTO students (student_name, student_email, user_password, profile_image) VALUES (?, ?, ?, ?)";
-                $statement = $conn->prepare($sql);
-                $statement->bind_param("ssss", $name, $email, $hashed_password, $imagePath);
-            } elseif ($user_type == "Teacher") {
-                if (empty($department)) {
-                    $feedback = "<div class='alert alert-danger text-center'>Department is required for teachers.</div>";
-                    $statement = null;  
-                } else {
-                    $sql = "INSERT INTO teacher (teacher_name, teacher_email, user_password, department_name, profile_image) VALUES (?, ?, ?, ?, ?)";
-                    $statement = $conn->prepare($sql);
-                    $statement->bind_param("sssss", $name, $email, $hashed_password, $department, $imagePath);
-                }
-            } elseif ($user_type == "Admin") {
-                $sql = "INSERT INTO admin (admin_name, admin_email, user_password, profile_image) VALUES (?, ?, ?, ?)";
-                $statement = $conn->prepare($sql);
-                $statement->bind_param("ssss", $name, $email, $hashed_password, $imagePath);
-            }
-
-            if ($statement && $statement->execute()) {
-                // Redirect to login page on success
-                header("Location: /itproject/Login/login.php?msg=registered");
-                exit();
-            } else {
-                $feedback = "<div class='alert alert-danger text-center'>Error: " . ($statement ? $statement->error : 'Unknown error') . "</div>";
-            }
-
-            if ($statement) {
-                $statement->close();
-            }
+    if (!empty($_POST['department_name']) && $action === "fetch") {
+        $department_selected = mysqli_real_escape_string($conn, $_POST['department_name']);
+        $query = "SELECT teacher_name FROM teacher WHERE department_name = '$department_selected'";
+        $result = $conn->query($query);
+        while ($row = $result->fetch_assoc()) {
+            $instructors[] = $row['teacher_name'];
         }
-
-        $check_statement->close();
     }
 
-    $conn->close();
+    if ($action === "submit") {
+        $name = trim($_POST['name']);
+        $id = trim($_POST['email']);
+        $section = trim($_POST['section']);
+        $date = $_POST['date'];
+        $time = $_POST['time'];
+        $description = trim($_POST['description']);
+        $department = $_POST['department_name'];
+        $teacher = $_POST['teacher_name'];
+
+        if (empty($name) || empty($id) || empty($section) || empty($date) || empty($time) || empty($description) || empty($department) || empty($teacher)) {
+            $error_message = "All fields are required.";
+        } else {
+            $appointment_datetime = $date . " " . $time . ":00";
+            $stmt = $conn->prepare("INSERT INTO appointmentdb (student_name, student_ID, section, appointment_date, Description, department_name, teacher_name, Status) VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending')");
+            $stmt->bind_param("sssssss", $name, $id, $section, $appointment_datetime, $description, $department, $teacher);
+            if ($stmt->execute()) {
+                $success_message = "Appointment added successfully!";
+            } else {
+                $error_message = "Error adding appointment. Please try again.";
+            }
+            $stmt->close();
+        }
+    }
 }
+
+// Always refresh appointments AFTER insert or fetch
+if ($studentID) {
+    $stmt = $conn->prepare("SELECT * FROM appointmentdb WHERE student_ID = ?");
+    $stmt->bind_param("i", $studentID);
+    $stmt->execute();
+    $appointments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+}
+
+$conn->close();
 ?>
 
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register</title>
+    <meta charset="utf-8">
+    <title>Appointment Scheduling System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="/itproject/Admin/Asset/registration.css">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-        }
-
-        .navbar {
-            margin-bottom: 30px;
-        }
-
-        .container {
-            max-width: 600px;
-        }
-
-        .card {
-            background-color: #f9f9f9;
-            border-radius: 10px;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .form-label i {
-            margin-right: 8px;
-        }
-
-        .footer {
-            background-color: #333;
-            color: white;
-            padding: 15px;
-            text-align: center;
-            margin-top: 40px;
-        }
-    </style>
+    <link rel="stylesheet" href="/itproject/Login/Asset/addappoint.css">
 </head>
-
 <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3">
-        <a class="navbar-brand" href="#">
-            <img src="../img/Alogo1.jpg" alt="Logo"> Appointment Scheduling
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark w-100">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="#">
+            <img class="logo me-2" src="../../img/Alogo1.jpg" alt="Logo">
+            <span>Appointment Scheduling System</span>
         </a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav ms-auto">
-                <li class="nav-item"><a class="nav-link text-white" href="/itproject/aboutus.php"><h1>About Us</h1></a></li>
+        <div class="collapse navbar-collapse justify-content-end">
+            <ul class="navbar-nav">
+                <li class="nav-item"><a class="nav-link text-white" href="/itproject/aboutus.php">About Us</a></li>
             </ul>
         </div>
-    </nav>
+    </div>
+</nav>
 
-    <div class="container">
-        <div class="card p-4">
-            <?php echo $feedback; ?>
-            <form action="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" method="POST" enctype="multipart/form-data">
-                <div class="header text-center mb-4">
-                    <h2 class="text-dark">Appointment Scheduling System</h2>
-                    <p>Register for an account</p>
-                </div>
+<div class="container d-flex justify-content-center align-items-center flex-column" style="margin-top: 75px;">
+    <div class="card p-4 shadow-lg" style="max-width: 400px; width: 100%;">
+        <h2 class="text-center">Appointments</h2>
 
-                <!-- Profile Image Upload -->
-                <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-image"></i> Upload Profile Image</label>
-                    <input type="file" class="form-control" name="profile_image" accept="image/*">
-                    <small class="text-muted">Max size: 2MB (Optional)</small>
-                </div>
+        <?php if (!empty($success_message)): ?>
+            <div class="alert alert-success"><?php echo $success_message; ?></div>
+        <?php elseif (!empty($error_message)): ?>
+            <div class="alert alert-danger"><?php echo $error_message; ?></div>
+        <?php endif; ?>
 
-                <!-- User Type Selection -->
-                <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-user-circle"></i> User Type</label>
-                    <select name="user_type" class="form-control" required onchange="this.form.submit()">
-                        <option value="">Select User Type</option>
-                        <option value="Student" <?php echo isset($user_type) && $user_type == 'Student' ? 'selected' : ''; ?>>Student</option>
-                        <option value="Teacher" <?php echo isset($user_type) && $user_type == 'Teacher' ? 'selected' : ''; ?>>Teacher</option>
-                        <option value="Admin" <?php echo isset($user_type) && $user_type == 'Admin' ? 'selected' : ''; ?>>Admin</option>
+        <form method="POST">
+            <div class="mb-3"><label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" value="<?php echo $_POST['name'] ?? ''; ?>"></div>
+            <div class="mb-3"><label class="form-label">Email Account</label>
+                <input type="text" name="email" class="form-control" value="<?php echo $_POST['email'] ?? ''; ?>"></div>
+            <div class="mb-3"><label class="form-label">Section</label>
+                <input type="text" name="section" class="form-control" value="<?php echo $_POST['section'] ?? ''; ?>"></div>
+            <div class="mb-3"><label class="form-label">Date</label>
+                <input type="date" name="date" class="form-control" value="<?php echo $_POST['date'] ?? ''; ?>"></div>
+            <div class="mb-3"><label class="form-label">Time</label>
+                <input type="time" name="time" class="form-control" value="<?php echo $_POST['time'] ?? ''; ?>"></div>
+            <div class="mb-3">
+                <label class="form-label">Department</label>
+                <div class="input-group">
+                    <select name="department_name" class="form-control">
+                        <option value="">Select Department</option>
+                        <?php
+                        $departments = ["Computer Studies", "Education", "Business and Accountancy", 
+                            "Maritime Education", "Criminology", "Engineering", 
+                            "Health and Sciences", "Art and Sciences"];
+                        foreach ($departments as $dept) {
+                            $selected = ($_POST['department_name'] ?? '') === $dept ? "selected" : "";
+                            echo "<option value='$dept' $selected>$dept</option>";
+                        }
+                        ?>
                     </select>
-                    <noscript><input type="submit" value="Update Form" class="btn btn-secondary mt-2"></noscript>
+                    <button type="submit" name="action" value="fetch" class="btn btn-secondary">Load Instructors</button>
                 </div>
+            </div>
+            <div class="mb-3"><label class="form-label">Instructor</label>
+                <select name="teacher_name" class="form-control">
+                    <option value="">Select Instructor</option>
+                    <?php foreach ($instructors as $tname): ?>
+                        <option value="<?php echo $tname; ?>" <?php echo (isset($_POST['teacher_name']) && $_POST['teacher_name'] === $tname) ? 'selected' : ''; ?>>
+                            <?php echo $tname; ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="mb-3"><label class="form-label">Subject/Meeting Reason</label>
+                <input type="text" name="description" class="form-control" value="<?php echo $_POST['description'] ?? ''; ?>"></div>
 
-                <!-- Full Name Input -->
-                <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-user"></i> Full Name</label>
-                    <input type="text" class="form-control" name="name" required value="<?php echo isset($name) ? $name : ''; ?>" placeholder="Enter your full name">
-                </div>
-
-                <!-- CU Corporate Email Input -->
-                <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-envelope"></i> CU Corporate Email</label>
-                    <input type="email" class="form-control" name="email" required value="<?php echo isset($email) ? $email : ''; ?>" placeholder="e.g. name@g.cu.edu.ph">
-                    <small class="text-muted">Please use your CU corporate email (e.g., name@g.cu.edu.ph).</small>
-                </div>
-
-                <!-- Password Input -->
-                <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-lock"></i> Password</label>
-                    <input type="password" class="form-control" name="password" required placeholder="Enter your password">
-                    <small class="text-muted">Your password must be at least 8 characters long.</small>
-                </div>
-
-                <!-- Confirm Password Input -->
-                <div class="mb-3">
-                    <label class="form-label"><i class="fas fa-lock"></i> Confirm Password</label>
-                    <input type="password" class="form-control" name="confirm_password" required placeholder="Confirm your password">
-                </div>
-
-                <!-- Department Selection (For Teachers) -->
-                <?php if (isset($user_type) && $user_type == "Teacher"): ?>
-                    <div class="mb-3">
-                        <label class="form-label"><i class="fas fa-building"></i> Department</label> 
-                        <select name="department" class="form-control" required>
-                            <option value="">Select Department</option>
-                            <?php foreach ($departments as $dept): ?>
-                                <option value="<?php echo $dept; ?>" <?php echo isset($department) && $department == $dept ? 'selected' : ''; ?>>
-                                    <?php echo $dept; ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                <?php endif; ?>
-
-                <!-- Submit and Logout Button -->
-                <div class="d-flex justify-content-between mt-3">
-                    <button type="submit" class="btn btn-success">Register</button>
-                    <a href="/itproject/Login/login.php" class="btn btn-danger">Log out</a>
-                </div>
-            </form>
-        </div>
+            <div class="d-grid gap-2">
+                <button type="submit" name="action" value="submit" class="btn btn-success">Add Appointment</button>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#viewModal">View Appointments</button>
+                <a href="/itproject/Login/login.php" class="btn btn-danger">Log out</a>
+            </div>
+        </form>
     </div>
+</div>
 
-    <!-- Footer Section -->
-    <div class="footer">
-        <p>&copy; 2025 Appointment Scheduling System. All rights reserved.</p>
+<!-- Modal -->
+<div class="modal fade" id="viewModal" tabindex="-1" aria-labelledby="viewModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="viewModalLabel">My Appointments</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <?php if (!empty($appointments)): ?>
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Name</th><th>Section</th><th>Date</th><th>Teacher</th><th>Dept</th><th>Description</th><th>Status</th><th>Cancel Remark</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($appointments as $row): ?>
+                        <tr>
+                            <td><?= htmlspecialchars($row['student_name']) ?></td>
+                            <td><?= htmlspecialchars($row['section']) ?></td>
+                            <td><?= htmlspecialchars($row['appointment_date']) ?></td>
+                            <td><?= htmlspecialchars($row['teacher_name']) ?></td>
+                            <td><?= htmlspecialchars($row['department_name']) ?></td>
+                            <td><?= htmlspecialchars($row['Description']) ?></td>
+                            <td><?= htmlspecialchars($row['Status']) ?></td>
+                            <td>
+                            <?php 
+                            // Check if the appointment was cancelled and if cancel_remark exists
+                            if ($row['Status'] === 'Cancelled' && isset($row['Cancellation_Remark'])) {
+                                echo htmlspecialchars($row['Cancellation_Remark']);
+                            } else {
+                                echo 'N/A';
+                            }
+                            ?>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        <?php else: ?>
+            <p class="text-center">No appointments scheduled.</p>
+        <?php endif; ?>
+      </div>
     </div>
+  </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

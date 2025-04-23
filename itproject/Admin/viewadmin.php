@@ -3,25 +3,29 @@
 session_start();
 
 // Optional: Admin access check (uncomment if needed)
-// if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] != 'Admin') {
-//     header("Location: /itproject/Login/login.php");
-//     exit();
-// }
+if (!isset($_SESSION['user_type']) || $_SESSION['user_type'] != 'Admin') {
+    header("Location: /itproject/Login/login.php");
+    exit();
+}
 
-// Include the database connection
+
 require 'C:\xampp\htdocs\itproject\DBconnect\Accounts\overall.php';
 
-// Check if the connection was successful
-$students_query = "SELECT * FROM students";
-$teachers_query = "SELECT * FROM teacher";
+$students_query = "SELECT students.*, departments.department_name 
+                   FROM students 
+                   LEFT JOIN departments ON students.department_name = departments.department_name";
+
+$teachers_query = "SELECT teacher.*, departments.department_name 
+                   FROM teacher 
+                   LEFT JOIN departments ON teacher.department_name = departments.department_name";
+
 $admins_query = "SELECT * FROM admin";
 
-// Execute the queries
+
 $students_result = $conn->query($students_query);
 $teachers_result = $conn->query($teachers_query);
 $admins_result = $conn->query($admins_query);
 
-// Check for errors in the queries
 if (!$students_result || !$teachers_result || !$admins_result) {
     die("Error: " . $conn->error);
 }
@@ -109,7 +113,7 @@ $selected_role = isset($_POST['role']) ? $_POST['role'] : '';
         <ul class="navbar-nav ms-auto">
             <li class="nav-item"><a class="nav-link text-white" href="/itproject/Admin/registration.php">Create Account</a></li>
             <li class="nav-item"><a class="nav-link text-white" href="/itproject/aboutus.php">About Us</a></li>
-            <li class="nav-item"><a class="nav-link text-white" href="/itproject/Login/login.php">Log out</a></li>
+            <li class="nav-item"><a class="nav-link text-white" href="/itproject/Login/login.php">Log Out</a></li>
         </ul>
     </div>
 </nav>
@@ -141,6 +145,7 @@ $selected_role = isset($_POST['role']) ? $_POST['role'] : '';
                     <tr>
                         <th>Role</th>
                         <th>Name</th>
+                        <th>Department</th>
                         <th>Email</th>
                         <th>Actions</th>
                     </tr>
@@ -153,6 +158,7 @@ $selected_role = isset($_POST['role']) ? $_POST['role'] : '';
                                 <img src="<?= $student['profile_image'] ? $student['profile_image'] : 'default-avatar.jpg' ?>" alt="Profile Image" width="50" height="50">
                                 <?= htmlspecialchars($student['student_name']) ?>
                             </td>
+                            <td><?= htmlspecialchars($student['department_name'] ) ?></td>
                             <td><?= htmlspecialchars($student['student_email']) ?></td>
                             <td>
                                 <a href="/itproject/Admin/Process/edit.php?id=<?= $student['student_id'] ?>&type=student" class="btn btn-primary btn-sm">Edit</a>
